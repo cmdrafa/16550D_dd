@@ -86,7 +86,7 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
         {
 
             b_data = *(uartdev->data + i);
-            printk(KERN_INFO "b_data: %c \n", b_data);
+            printk(KERN_INFO "Kernel received pro user space: %c \n", b_data);
 
             outb(b_data, BASE + UART_TX); // write something to it
             i++;
