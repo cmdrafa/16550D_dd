@@ -54,9 +54,19 @@ int uart_release(struct inode *inodep, struct file *filep)
 
 ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, loff_t *offp)
 {
-    unsigned long uncp;
-    char b_data;
+    unsigned long uncp; // Variable that stores the return from copy_from_user (uncopied data)
+    int data_checker;   // Increment until end of char arr
+    int to_write;       // data to write
+    int to_write_bits;  // Data to write Bits
+    char b_data;        // char that stores data to write (1 byte)
+    int i;              // Array index of char data
     struct dev *uartdev = filep->private_data;
+
+    data_checker = 0;
+    to_write = 0;
+    to_write_bits = 0;
+    i = 0;
+
     uartdev->data = kmalloc(sizeof(char) * (count + 1), GFP_KERNEL);
     if (!uartdev->data)
     {
@@ -65,16 +75,24 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
     memset(uartdev->data, 0, sizeof(char) * (count + 1));
 
     uncp = copy_from_user(uartdev->data, buff, count);
-    printk(KERN_INFO "Kernel received: %s\n", uartdev->data);
+    //printk(KERN_INFO "Kernel received: %s\n", uartdev->data);
+    to_write = count - uncp;
+    to_write_bits = to_write * 8;
 
-    if (inb((BASE + UART_LSR) & UART_LSR_THRE) != 0) // check for THRE emptyness
+    while (data_checker != to_write_bits)
     {
-        printk(KERN_INFO "THRE NOT EMPTY, UNABLE TO WRITE");
+
+        if (inb((BASE + UART_LSR) & UART_LSR_THRE) == 0) // check for THRE emptyness
+        {
+
+            b_data = *(uartdev->data + i);
+            printk(KERN_INFO "b_data: %c \n", b_data);
+
+            outb(b_data, BASE + UART_TX); // write something to it
+            i++;
+            data_checker += 8;
+        }
     }
-
-    b_data = *(uartdev->data);
-
-    outb(b_data, BASE + UART_TX); // write something to it
 
     kfree(uartdev->data);
 
