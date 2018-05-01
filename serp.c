@@ -86,7 +86,7 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
         {
 
             b_data = *(uartdev->data + i);
-            printk(KERN_INFO "Kernel received pro user space: %c \n", b_data);
+            printk(KERN_INFO "Kernel received from user space: %c \n", b_data);
 
             outb(b_data, BASE + UART_TX); // write something to it
             i++;
@@ -182,6 +182,7 @@ static int uart_init(void)
 static void uart_exit(void)
 {
     int Major;
+
     Major = MAJOR(uartdevice);
     cdev_del(&uartdev->cdev);
     kfree(uartdev);
@@ -189,5 +190,6 @@ static void uart_exit(void)
     unregister_chrdev_region(uartdevice, 1);
     printk(KERN_INFO "Major number: %d unloaded\n", Major);
 }
+
 module_init(uart_init);
 module_exit(uart_exit);
