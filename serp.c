@@ -52,6 +52,53 @@ int uart_release(struct inode *inodep, struct file *filep)
     return 0;
 }
 
+ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *offp)
+{
+    unsigned long uncp;
+    int to_read_bits;
+    int data_checker;
+    int i;
+    int success;
+    unsigned char b_data;
+    struct dev *uartdev = filep->private_data;
+
+    to_read_bits = 0;
+    data_checker = 0;
+    i = 0;
+
+    uartdev->data = kmalloc(sizeof(char) * (count + 1), GFP_KERNEL);
+    memset(uartdev->data, 0, sizeof(char) * (count + 1));
+
+    to_read_bits = count * 8;
+
+    while (data_checker != to_read_bits)
+    {
+        if (inb((BASE + UART_LSR) & UART_LSR_DR))
+        {
+            b_data = inb(BASE + UART_RX);
+            printk(KERN_INFO "Char read: %c", b_data);
+
+            *(uartdev->data + i) = b_data;
+            i++;
+            data_checker += 8;
+            success = 1;
+        }
+    }
+
+    uncp = copy_to_user(buff, uartdev->data, count);
+    kfree(uartdev->data);
+
+    if (uncp == 0)
+    {
+        printk(KERN_INFO "Bytes sent to user %d\n", count);
+        return success;
+    }
+    else
+    {
+        return uncp;
+    }
+}
+
 ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, loff_t *offp)
 {
     unsigned long uncp; // Variable that stores the return from copy_from_user (uncopied data)
@@ -82,16 +129,16 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
     while (data_checker != to_write_bits)
     {
 
-        if (inb((BASE + UART_LSR) & UART_LSR_THRE) == 0) // check for THRE emptyness
+        if (inb((BASE + UART_LSR) & UART_LSR_THRE)) // check for THRE emptyness
         {
-
-            b_data = *(uartdev->data + i);
-            printk(KERN_INFO "Kernel received from user space: %c \n", b_data);
-
-            outb(b_data, BASE + UART_TX); // write something to it
-            i++;
-            data_checker += 8;
+            schedule();
         }
+        b_data = *(uartdev->data + i);
+        printk(KERN_INFO "Kernel received from user space: %c \n", b_data);
+
+        outb(b_data, BASE + UART_TX); // write something to it
+        i++;
+        data_checker += 8;
     }
 
     kfree(uartdev->data);
@@ -113,7 +160,7 @@ struct file_operations uart_fops = {
     .owner = THIS_MODULE,
     .llseek = no_llseek,
     .open = uart_open,
-    //.read = uart_read,
+    .read = uart_read,
     .write = uart_write,
     .release = uart_release,
 };
