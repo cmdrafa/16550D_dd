@@ -73,7 +73,7 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
 
     while (data_checker != to_read_bits)
     {
-        if (inb((BASE + UART_LSR) & UART_LSR_DR))
+        if (inb((BASE + UART_LSR) & UART_LSR_DR) == 1)
         {
             b_data = inb(BASE + UART_RX);
             printk(KERN_INFO "Char read: %c", b_data);
@@ -82,6 +82,11 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
             i++;
             data_checker += 8;
             success = 1;
+        }
+        else
+        {
+            printk(KERN_INFO "Nothing to read\n");
+            return -1;
         }
     }
 

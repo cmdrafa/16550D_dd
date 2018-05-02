@@ -16,7 +16,7 @@ int main(int argc, char *argv[])
     }
     char *buf = malloc(buffersize + 2);
     char *dev = argv[1];
-    char *q = "quit\n";
+    char *q = "q\n";
 
     int fd = open(dev, O_RDWR);
     if (fd < 0)
