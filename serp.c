@@ -66,6 +66,8 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
     data_checker = 0;
     i = 0;
 
+    printk(KERN_INFO "Inside uart_read(%d)\n", count);
+
     uartdev->data = kmalloc(sizeof(char) * (count + 1), GFP_KERNEL);
     memset(uartdev->data, 0, sizeof(char) * (count + 1));
 
@@ -73,7 +75,7 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
 
     while (data_checker != to_read_bits)
     {
-        if (inb((BASE + UART_LSR) & UART_LSR_DR) == 1)
+        if (inb(BASE + UART_LSR) & UART_LSR_DR)
         {
             b_data = inb(BASE + UART_RX);
             printk(KERN_INFO "Char read: %c", b_data);
@@ -83,10 +85,11 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
             data_checker += 8;
             success = 1;
         }
-        else
+       else
         {
-            printk(KERN_INFO "Nothing to read\n");
-            return -1;
+            schedule();
+           printk(KERN_INFO "Nothing to read (returning %d)\n", -EAGAIN);
+            return -EAGAIN;
         }
     }
 
@@ -134,7 +137,7 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
     while (data_checker != to_write_bits)
     {
 
-        if (inb((BASE + UART_LSR) & UART_LSR_THRE)) // check for THRE emptyness
+        if (inb(BASE + UART_LSR) & UART_LSR_THRE) // check for THRE emptyness
         {
             schedule();
         }

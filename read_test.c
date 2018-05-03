@@ -27,12 +27,18 @@ int main(int argc, char *argv[])
 
     while (strcmp(buf, q) != 0)
     {
-        int rc_w = read(fd, buf, 10);
+        int rc_w = read(fd, buf, 1);
         if (rc_w < 0)
         {
             perror("Reading FD: ");
             printf("%d\n", rc_w);
-            return -1;
+            printf("errno = %d (expecting EAGAIN = %d)\n", errno, EAGAIN);
+            if(errno == EAGAIN) {
+                buf[0] = 0;
+                continue;
+            }
+            else    
+                return -1;
         }
         printf("RC_W: %s", buf);
     }
