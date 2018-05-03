@@ -201,12 +201,13 @@ static int uart_init(void)
     }
 
     outb(0, BASE + UART_IER); // Disable interrupt
-    //lcr = UART_LCR_WLEN8 | UART_LCR_EPAR;
-    outb(UART_LCR_WLEN8, BASE + UART_LCR); //Set len to 8
-    outb(UART_LCR_EPAR, BASE + UART_LCR);  // Even parity
-    outb(UART_LCR_DLAB, BASE + UART_LCR);  // Acess dlab
+    lcr = UART_LCR_WLEN8 | UART_LCR_EPAR | UART_LCR_STOP;
+    outb(lcr, BASE + UART_LCR); //Set len to 8, Even parity and 2 stop bits
+    lcr |= UART_LCR_DLAB; 
+    outb(lcr, BASE + UART_LCR);  // Acess dlab
     outb(UART_DIV_1200, BASE + UART_DLL);  // 1200bps br
-    outb(0, BASE + UART_DLM);              //
+	lcr &= ~UART_LCR_DLAB;
+    outb(lcr, BASE + UART_DLM);              //
     outb(0, BASE + UART_LCR);              // set it to zero
 
     //  Allocate Major Numbers
