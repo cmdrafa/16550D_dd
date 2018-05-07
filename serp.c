@@ -38,6 +38,8 @@ struct dev
 
 //static struct timer_list read_timer;
 
+void configure_uart_device(void);
+
 int uart_open(struct inode *inodep, struct file *filep)
 {
     int ret;
@@ -175,8 +177,7 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
         }
         else
         {
-            set_current_state(TASK_INTERRUPTIBLE);
-            schedule_timeout(2);
+            schedule();
         }
     }
 
@@ -209,7 +210,6 @@ struct dev *uartdev;
 static int uart_init(void)
 {
     int ret, Major, Minor, reg;
-    unsigned char lcr = 0;
 
     uartdev = kmalloc(sizeof(struct dev), GFP_KERNEL);
     if (!uartdev)
@@ -226,15 +226,7 @@ static int uart_init(void)
         return -1;
     }
 
-    outb(0, BASE + UART_IER);                             // Disable interrupt
-    lcr = UART_LCR_WLEN8 | UART_LCR_EPAR | UART_LCR_STOP; //Set len to 8, Even parity and 2 stop bits
-    outb(lcr, BASE + UART_LCR);
-    lcr |= UART_LCR_DLAB;                 // Select d_dlab
-    outb(lcr, BASE + UART_LCR);           // Acess dlab
-    outb(UART_DIV_1200, BASE + UART_DLL); // 1200bps br
-    outb(0, BASE + UART_DLM);             //
-    lcr &= ~UART_LCR_DLAB;
-    outb(lcr, BASE + UART_LCR); // set it to zero
+    configure_uart_device();
 
     //  Allocate Major Numbers
     ret = alloc_chrdev_region(&uartdevice, 0, 1, uartdev->devname);
@@ -262,6 +254,21 @@ static int uart_init(void)
     //timer_state = 0;
 
     return 0;
+}
+
+void configure_uart_device()
+{
+    unsigned char lcr = 0;
+
+    outb(0, BASE + UART_IER);                             // Disable interrupts
+    lcr = UART_LCR_WLEN8 | UART_LCR_EPAR | UART_LCR_STOP; //Set len to 8, Even parity and 2 stop bits
+    outb(lcr, BASE + UART_LCR);
+    lcr |= UART_LCR_DLAB;                 // Select d_dlab
+    outb(lcr, BASE + UART_LCR);           // Acess dlab
+    outb(0, BASE + UART_DLL);             // 1200bps br
+    outb(UART_DIV_1200, BASE + UART_DLM); //
+    lcr &= ~UART_LCR_DLAB;
+    outb(lcr, BASE + UART_LCR); // set it to zero
 }
 
 static void uart_exit(void)
