@@ -12,6 +12,8 @@
 #include <linux/proc_fs.h>
 #include <linux/fcntl.h> /* O_ACCMODE */
 #include <linux/aio.h>
+#include <linux/delay.h>
+#include <linux/timer.h>
 #include <asm/uaccess.h>
 #include <asm/io.h>
 #include <linux/ioctl.h>
@@ -55,42 +57,33 @@ int uart_release(struct inode *inodep, struct file *filep)
 ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *offp)
 {
     unsigned long uncp;
-    int to_read_bits;
-    int data_checker;
     int i;
-    int success;
-    unsigned char b_data;
+    unsigned char escape = 0;
+    //unsigned char lcr = 0;
     struct dev *uartdev = filep->private_data;
 
-    to_read_bits = 0;
-    data_checker = 0;
     i = 0;
 
-    printk(KERN_INFO "Inside uart_read(%d)\n", count);
+    //printk(KERN_INFO "Inside uart_read(%d)\n", count);
 
     uartdev->data = kmalloc(sizeof(char) * (count + 1), GFP_KERNEL);
     memset(uartdev->data, 0, sizeof(char) * (count + 1));
 
-    to_read_bits = count * 8;
+    //lcr = inb(BASE + UART_LSR) & UART_LSR_DR;
+    //printk(KERN_INFO "inside while\n");
 
-    while (data_checker != to_read_bits)
+    while (!(inb(BASE + UART_LSR) & UART_LSR_DR))
     {
-        if (inb(BASE + UART_LSR) & UART_LSR_DR)
-        {
-            b_data = inb(BASE + UART_RX);
-            printk(KERN_INFO "Char read: %c", b_data);
-
-            *(uartdev->data + i) = b_data;
-            i++;
-            data_checker += 8;
-            success = 1;
-        }
-       else
-        {
-            schedule();
-           printk(KERN_INFO "Nothing to read (returning %d)\n", -EAGAIN);
-            return -EAGAIN;
-        }
+        set_current_state(TASK_INTERRUPTIBLE);
+        schedule_timeout(1);
+    }
+    //printk(KERN_INFO "inside if\n");
+    while (escape != 10)
+    {
+        *(uartdev->data + i) = inb(BASE + UART_RX);
+        escape = *(uartdev->data + i);
+        printk(KERN_INFO "Kernel received char: %c\n", *(uartdev->data + i));
+        i++;
     }
 
     uncp = copy_to_user(buff, uartdev->data, count);
@@ -98,12 +91,12 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
 
     if (uncp == 0)
     {
-        printk(KERN_INFO "Bytes sent to user %d\n", count);
-        return success;
+        //printk(KERN_INFO "Bytes sent to user %d\n", count);
+        return i * sizeof(unsigned char);
     }
     else
     {
-        return uncp;
+        return -uncp;
     }
 }
 
@@ -137,9 +130,10 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
     while (data_checker != to_write_bits)
     {
 
-        if (inb(BASE + UART_LSR) & UART_LSR_THRE) // check for THRE emptyness
+        while (inb(BASE + UART_LSR) & UART_LSR_THRE) // check for THRE emptyness
         {
-            schedule();
+            set_current_state(TASK_INTERRUPTIBLE);
+            schedule_timeout(1);
         }
         b_data = *(uartdev->data + i);
         printk(KERN_INFO "Kernel received from user space: %c \n", b_data);
@@ -175,14 +169,10 @@ struct file_operations uart_fops = {
 
 struct dev *uartdev;
 
-//initialize the UART with the following communication parameters:
-//8-bit chars, 2 stop bits, parity even, and 1200 bps.
-//Because, we will not use interrupts,
-//make sure that the UART is configured not to generate interrupts
-//send one character via the UART
+
 static int uart_init(void)
 {
-    int ret, Major, Minor, reg, count;
+    int ret, Major, Minor, reg;
     unsigned char lcr = 0;
 
     uartdev = kmalloc(sizeof(struct dev), GFP_KERNEL);
@@ -203,12 +193,12 @@ static int uart_init(void)
     outb(0, BASE + UART_IER); // Disable interrupt
     lcr = UART_LCR_WLEN8 | UART_LCR_EPAR | UART_LCR_STOP;
     outb(lcr, BASE + UART_LCR); //Set len to 8, Even parity and 2 stop bits
-    lcr |= UART_LCR_DLAB; 
-    outb(lcr, BASE + UART_LCR);  // Acess dlab
-    outb(UART_DIV_1200, BASE + UART_DLL);  // 1200bps br
-	lcr &= ~UART_LCR_DLAB;
-    outb(lcr, BASE + UART_DLM);              //
-    outb(0, BASE + UART_LCR);              // set it to zero
+    lcr |= UART_LCR_DLAB;
+    outb(lcr, BASE + UART_LCR);           // Acess dlab
+    outb(UART_DIV_1200, BASE + UART_DLL); // 1200bps br
+    lcr &= ~UART_LCR_DLAB;
+    outb(lcr, BASE + UART_DLM); //
+    outb(0, BASE + UART_LCR);   // set it to zero
 
     //  Allocate Major Numbers
     ret = alloc_chrdev_region(&uartdevice, 0, 1, uartdev->devname);
@@ -249,3 +239,4 @@ static void uart_exit(void)
 
 module_init(uart_init);
 module_exit(uart_exit);
+

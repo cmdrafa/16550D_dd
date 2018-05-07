@@ -16,7 +16,6 @@ int main(int argc, char *argv[])
     }
     char *buf = malloc(buffersize + 2);
     char *dev = argv[1];
-    char *q = "q\n";
 
     int fd = open(dev, O_RDWR);
     if (fd < 0)
@@ -25,22 +24,27 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    while (strcmp(buf, q) != 0)
+    while (*buf != 'q')
     {
-        int rc_w = read(fd, buf, 1);
+        int rc_w = read(fd, buf, buffersize);
         if (rc_w < 0)
         {
             perror("Reading FD: ");
             printf("%d\n", rc_w);
             printf("errno = %d (expecting EAGAIN = %d)\n", errno, EAGAIN);
-            if(errno == EAGAIN) {
+            if (errno == EAGAIN)
+            {
                 buf[0] = 0;
                 continue;
             }
-            else    
+            else
                 return -1;
         }
-        printf("RC_W: %s", buf);
+        if (strcmp(buf, "") != 0)
+        {
+            printf("Received String on userspace: %s\n", buf);
+            //printf("Bytes read: %d \n", rc_w);
+        }
     }
 
     fd = close(fd);
