@@ -25,16 +25,17 @@
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Rafael Kraemer");
 
-dev_t uartdevice;
-//int timer_state;
-
 struct dev
 {
     struct cdev cdev;
     char *data;
     char *devname;
     int cnt;
+    int timer_state;
+    dev_t uartdevice;
 };
+
+struct dev *uartdev;
 
 //static struct timer_list read_timer;
 
@@ -150,7 +151,6 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
     to_write = 0;
     to_write_bits = 0;
     i = 0;
-    printk(KERN_INFO "Inside write\n");
 
     uartdev->data = kmalloc(sizeof(char) * (count + 1), GFP_KERNEL);
     if (!uartdev->data)
@@ -161,7 +161,6 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
     memset(uartdev->data, 0, sizeof(char) * (count + 1));
 
     uncp = copy_from_user(uartdev->data, buff, count);
-    //printk(KERN_INFO "Kernel received: %s\n", uartdev->data);
     to_write = count - uncp;
     to_write_bits = to_write * 8;
 
@@ -170,14 +169,14 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
         if ((inb(BASE + UART_LSR) & UART_LSR_THRE) != 0) // check for THRE emptyness
         {
             b_data = *(uartdev->data + i);
-            //printk(KERN_INFO "Kernel received from user space: %c \n", b_data);
             outb(b_data, BASE + UART_TX); // write something to it
             i++;
             data_checker += 8;
         }
         else
         {
-            schedule();
+            set_current_state(TASK_INTERRUPTIBLE);
+            schedule_timeout(2);
         }
     }
 
@@ -186,7 +185,7 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
     if (uncp == 0)
     {
         uartdev->cnt += count;
-        printk(KERN_INFO "Bytes Read %d\n", count);
+        printk(KERN_INFO "Bytes written %d\n", count);
         return count;
     }
     else
@@ -204,8 +203,6 @@ struct file_operations uart_fops = {
     .write = uart_write,
     .release = uart_release,
 };
-
-struct dev *uartdev;
 
 static int uart_init(void)
 {
@@ -229,14 +226,14 @@ static int uart_init(void)
     configure_uart_device();
 
     //  Allocate Major Numbers
-    ret = alloc_chrdev_region(&uartdevice, 0, 1, uartdev->devname);
+    ret = alloc_chrdev_region(&uartdev->uartdevice, 0, 1, uartdev->devname);
     if (ret < 0)
     {
         printk(KERN_ALERT "Major number allocation failed\n");
         return ret;
     }
-    Major = MAJOR(uartdevice);
-    Minor = MINOR(uartdevice);
+    Major = MAJOR(uartdev->uartdevice);
+    Minor = MINOR(uartdev->uartdevice);
     printk(KERN_INFO "Allocated Major number: %d\n", Major);
 
     //Register after allocation
@@ -244,7 +241,7 @@ static int uart_init(void)
     uartdev->cdev.owner = THIS_MODULE;
     uartdev->cdev.ops = &uart_fops;
 
-    reg = cdev_add(&uartdev->cdev, uartdevice, 1);
+    reg = cdev_add(&uartdev->cdev, uartdev->uartdevice, 1);
     if (reg < 0)
     {
         printk(KERN_ERR "Error in cdev_add\n");
@@ -265,8 +262,8 @@ void configure_uart_device()
     outb(lcr, BASE + UART_LCR);
     lcr |= UART_LCR_DLAB;                 // Select d_dlab
     outb(lcr, BASE + UART_LCR);           // Acess dlab
-    outb(0, BASE + UART_DLL);             // 1200bps br
-    outb(UART_DIV_1200, BASE + UART_DLM); //
+    outb(UART_DIV_1200, BASE + UART_DLL); // 1200bps br
+    outb(0, BASE + UART_DLM);             //
     lcr &= ~UART_LCR_DLAB;
     outb(lcr, BASE + UART_LCR); // set it to zero
 }
@@ -274,11 +271,11 @@ void configure_uart_device()
 static void uart_exit(void)
 {
     int Major;
-    Major = MAJOR(uartdevice);
+    Major = MAJOR(uartdev->uartdevice);
     cdev_del(&uartdev->cdev);
+    unregister_chrdev_region(uartdev->uartdevice, 1);
     kfree(uartdev);
     release_region(BASE, 8);
-    unregister_chrdev_region(uartdevice, 1);
     printk(KERN_INFO "Major number: %d unloaded\n", Major);
 }
 
