@@ -36,7 +36,7 @@ struct dev
     int cnt;
 };
 
-static struct timer_list read_timer;
+//static struct timer_list read_timer;
 
 int uart_open(struct inode *inodep, struct file *filep)
 {
@@ -148,6 +148,7 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
     to_write = 0;
     to_write_bits = 0;
     i = 0;
+    printk(KERN_INFO "Inside write\n");
 
     uartdev->data = kmalloc(sizeof(char) * (count + 1), GFP_KERNEL);
     if (!uartdev->data)
@@ -164,18 +165,19 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
 
     while (data_checker != to_write_bits)
     {
-
-        while (inb(BASE + UART_LSR) & UART_LSR_THRE) // check for THRE emptyness
+        if ((inb(BASE + UART_LSR) & UART_LSR_THRE) != 0) // check for THRE emptyness
+        {
+            b_data = *(uartdev->data + i);
+            //printk(KERN_INFO "Kernel received from user space: %c \n", b_data);
+            outb(b_data, BASE + UART_TX); // write something to it
+            i++;
+            data_checker += 8;
+        }
+        else
         {
             set_current_state(TASK_INTERRUPTIBLE);
-            schedule_timeout(1);
+            schedule_timeout(2);
         }
-        b_data = *(uartdev->data + i);
-        printk(KERN_INFO "Kernel received from user space: %c \n", b_data);
-
-        outb(b_data, BASE + UART_TX); // write something to it
-        i++;
-        data_checker += 8;
     }
 
     kfree(uartdev->data);

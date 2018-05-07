@@ -31,6 +31,10 @@ int main(int argc, char *argv[])
         int len = strlen(buf);
         //printf("LEN %d\n", len);
         int rc_w = write(fd, buf, len);
+        if (rc_w < 0)
+        {
+            perror("error writing: ");
+        }
         if (strcmp(buf, q) == 0)
         {
             printf("Goodbye\n");
