@@ -20,6 +20,7 @@
 #include <linux/cdev.h>
 #include <linux/ioport.h>
 #include <linux/sched.h>
+#include <asm/semaphore.h>
 #include "serial_reg.h"
 
 MODULE_LICENSE("Dual BSD/GPL");
@@ -28,6 +29,7 @@ MODULE_AUTHOR("Rafael Kraemer");
 struct dev
 {
     struct cdev cdev;
+    struct semaphore sem;
     char *data;
     char *devname;
     int cnt;
@@ -77,6 +79,11 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
     int data_read = 0;
     struct dev *uartdev = filep->private_data;
 
+    if (down_interruptible(&uartdev->sem))
+    {
+        return -ERESTARTSYS;
+    }
+
     i = 0;
 
     uartdev->data = kmalloc(sizeof(char) * (count + 1), GFP_KERNEL);
@@ -116,11 +123,13 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
 
     if (uncp == 0)
     {
+        up(&uartdev->sem);
         printk(KERN_INFO "Bytes sent to user %d\n", data_read);
         return data_read;
     }
     else
     {
+        up(&uartdev->sem);
         return -uncp;
     }
 }
@@ -134,6 +143,11 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
     char b_data;        // char that stores data to write (1 byte)
     int i;              // Array index of char data
     struct dev *uartdev = filep->private_data;
+
+    if (down_interruptible(&uartdev->sem))
+    {
+        return -ERESTARTSYS;
+    }
 
     data_checker = 0;
     to_write = 0;
@@ -173,11 +187,13 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
     if (uncp == 0)
     {
         uartdev->cnt += count;
+        up(&uartdev->sem);
         printk(KERN_INFO "Bytes written %d\n", count);
         return count;
     }
     else
     {
+        up(&uartdev->sem);
         printk(KERN_ALERT "Unable to copy %lu bytes\n", uncp);
         return uncp;
     }
@@ -204,16 +220,17 @@ static int uart_init(void)
     }
     memset(uartdev, 0, sizeof(struct dev));
     uartdev->devname = "serp";
+    init_MUTEX(&uartdev->sem);
 
     if (!request_region(BASE, 8, uartdev->devname))
     {
         printk(KERN_ERR "Request_region failed !!\n");
         return -1;
     }
-
     configure_uart_device();
 
     //  Allocate Major Numbers
+
     ret = alloc_chrdev_region(&uartdev->uartdevice, 0, 1, uartdev->devname);
     if (ret < 0)
     {

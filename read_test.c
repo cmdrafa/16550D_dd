@@ -16,6 +16,7 @@ int main(int argc, char *argv[])
     }
     char *buf = malloc(buffersize + 2);
     char *dev = argv[1];
+    char *q = "quit\n";
 
     int fd = open(dev, O_RDWR);
     if (fd < 0)
@@ -24,7 +25,7 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    while (*buf != 'q')
+    while (strcmp(buf, q) != 0)
     {
         int rc_w = read(fd, buf, buffersize);
         if (rc_w < 0)
