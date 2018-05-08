@@ -1,5 +1,5 @@
 /*                                                     
- * $Id: echo.c,v 1.5 2004/10/26 03:32:21 corbet Exp $ 
+ * $Id: serp.c,v 1.5 2004/10/26 03:32:21 corbet Exp $ 
  */
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -37,7 +37,7 @@ struct dev
 
 struct dev *uartdev;
 
-//static struct timer_list read_timer;
+static struct timer_list read_timer;
 
 void configure_uart_device(void);
 
@@ -54,17 +54,16 @@ int uart_open(struct inode *inodep, struct file *filep)
     return 0;
 }
 
-/*void timer_callback(unsigned long data)
+void timer_callback(unsigned long data)
 {
-    timer_state = 1;
-    printk(KERN_INFO "Timer callback %d\n", timer_state);
-}*/
+    uartdev->timer_state = 1;
+}
 
 int uart_release(struct inode *inodep, struct file *filep)
 {
-    //int ret;
+    int ret;
 
-    //ret = del_timer(&read_timer);
+    ret = del_timer(&read_timer);
     printk(KERN_INFO "Device has been sucessfully closed\n");
     return 0;
 }
@@ -73,8 +72,7 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
 {
     unsigned long uncp;
     int i;
-    //int ret;
-    //int local_timer;
+    int ret;
     unsigned char escape = 0;
     int data_read = 0;
     struct dev *uartdev = filep->private_data;
@@ -89,7 +87,7 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
     }
     memset(uartdev->data, 0, sizeof(char) * (count + 1));
 
-    while (1)
+    while (uartdev->timer_state != 1 && escape != 10)
     {
         if (!(inb(BASE + UART_LSR) & UART_LSR_DR))
         {
@@ -99,21 +97,10 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
         else
         {
             *(uartdev->data + i) = inb(BASE + UART_RX);
-            //ret = mod_timer(&read_timer, jiffies + msecs_to_jiffies(2000));
+            ret = mod_timer(&read_timer, jiffies + msecs_to_jiffies(2000));
             escape = *(uartdev->data + i);
             i++;
             data_read++;
-            if (escape == 10)
-            {
-                break;
-            }
-            /*    if (local_timer == 1)
-            {
-                printk(KERN_INFO "Inside timer_state break\n");
-                local_timer = 0;
-                timer_state = 0;
-                break;
-            }*/
             if (data_read == count)
             {
                 printk(KERN_INFO "Userspace buffer full, returning only %d bytes to userspace\n", count);
@@ -122,6 +109,7 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
             msleep_interruptible(1);
         }
     }
+    uartdev->timer_state = 0;
 
     uncp = copy_to_user(buff, uartdev->data, count);
     kfree(uartdev->data);
@@ -246,9 +234,9 @@ static int uart_init(void)
     {
         printk(KERN_ERR "Error in cdev_add\n");
     }
-    //setup_timer(&read_timer, timer_callback, 0);
 
-    //timer_state = 0;
+    setup_timer(&read_timer, timer_callback, 0);
+    uartdev->timer_state = 0;
 
     return 0;
 }
