@@ -1,5 +1,5 @@
 /*                                                     
- * $Id: serp.c,v 1.5 2004/10/26 03:32:21 corbet Exp $ 
+ * $Id: serp.c
  */
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -99,7 +99,7 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
         if (!(inb(BASE + UART_LSR) & UART_LSR_DR))
         {
             set_current_state(TASK_INTERRUPTIBLE);
-            schedule_timeout(2);
+            schedule_timeout(1);
         }
         else
         {
@@ -178,7 +178,7 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
         else
         {
             set_current_state(TASK_INTERRUPTIBLE);
-            schedule_timeout(2);
+            schedule_timeout(1);
         }
     }
 
