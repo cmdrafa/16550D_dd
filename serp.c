@@ -21,6 +21,7 @@
 #include <linux/ioport.h>
 #include <linux/sched.h>
 #include <asm/semaphore.h>
+
 #include "serial_reg.h"
 
 MODULE_LICENSE("Dual BSD/GPL");
@@ -37,16 +38,17 @@ struct dev
     dev_t uartdevice;
 };
 
-struct dev *uartdev;
+struct dev *uartdev; // Pointer to the structure
 
-static struct timer_list read_timer;
+static struct timer_list read_timer; // The timer used
 
-void configure_uart_device(void);
+void configure_uart_device(void); // Prototype
 
 int uart_open(struct inode *inodep, struct file *filep)
 {
     int ret;
     struct dev *uartdev;
+
     uartdev = container_of(inodep->i_cdev, struct dev, cdev);
     filep->private_data = uartdev;
 
@@ -56,6 +58,7 @@ int uart_open(struct inode *inodep, struct file *filep)
     return 0;
 }
 
+// The timer callback function
 void timer_callback(unsigned long data)
 {
     uartdev->timer_state = 1;
@@ -65,7 +68,9 @@ int uart_release(struct inode *inodep, struct file *filep)
 {
     int ret;
 
+    // Delete timer
     ret = del_timer(&read_timer);
+
     printk(KERN_INFO "Device has been sucessfully closed\n");
     return 0;
 }
@@ -86,6 +91,7 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
 
     i = 0;
 
+    // Allocate memory for the incoming data
     uartdev->data = kmalloc(sizeof(char) * (count + 1), GFP_KERNEL);
     if (!uartdev->data)
     {
@@ -94,6 +100,7 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
     }
     memset(uartdev->data, 0, sizeof(char) * (count + 1));
 
+    // While timer has not ellapsed or user has not pressed enter
     while (uartdev->timer_state != 1 && escape != 10)
     {
         if (!(inb(BASE + UART_LSR) & UART_LSR_DR))
@@ -104,11 +111,11 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
         else
         {
             *(uartdev->data + i) = inb(BASE + UART_RX);
-            ret = mod_timer(&read_timer, jiffies + msecs_to_jiffies(2000));
+            ret = mod_timer(&read_timer, jiffies + msecs_to_jiffies(2000)); // Start Timer
             escape = *(uartdev->data + i);
             i++;
             data_read++;
-            if (data_read == count)
+            if (data_read == count) // User_space buffer
             {
                 printk(KERN_INFO "Userspace buffer full, returning only %d bytes to userspace\n", count);
                 break;
@@ -118,15 +125,25 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
     }
     uartdev->timer_state = 0;
 
+    // Send data do the user
     uncp = copy_to_user(buff, uartdev->data, count);
+
     kfree(uartdev->data);
 
     if (uncp == 0)
     {
         up(&uartdev->sem);
-        printk(KERN_INFO "Bytes sent to user %d\n", data_read);
-        return data_read;
+        if (data_read > 0)
+        {
+            printk(KERN_INFO "Bytes sent to user %d\n", data_read);
+            return data_read;
+        }
+        else
+        {
+            return 0;
+        }
     }
+    // Check the better error message to send
     else
     {
         up(&uartdev->sem);
@@ -139,7 +156,6 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
     unsigned long uncp; // Variable that stores the return from copy_from_user (uncopied data)
     int data_checker;   // Increment until end of char arr
     int to_write;       // data to write
-    int to_write_bits;  // Data to write Bits
     char b_data;        // char that stores data to write (1 byte)
     int i;              // Array index of char data
     struct dev *uartdev = filep->private_data;
@@ -151,7 +167,6 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
 
     data_checker = 0;
     to_write = 0;
-    to_write_bits = 0;
     i = 0;
 
     uartdev->data = kmalloc(sizeof(char) * (count + 1), GFP_KERNEL);
@@ -164,16 +179,15 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
 
     uncp = copy_from_user(uartdev->data, buff, count);
     to_write = count - uncp;
-    to_write_bits = to_write * 8;
 
-    while (data_checker != to_write_bits)
+    while (data_checker != to_write)
     {
         if ((inb(BASE + UART_LSR) & UART_LSR_THRE) != 0) // check for THRE emptyness
         {
             b_data = *(uartdev->data + i);
             outb(b_data, BASE + UART_TX); // write something to it
             i++;
-            data_checker += 8;
+            data_checker++;
         }
         else
         {
@@ -191,11 +205,11 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
         printk(KERN_INFO "Bytes written %d\n", count);
         return count;
     }
-    else
+    else // Check for better error condition
     {
         up(&uartdev->sem);
         printk(KERN_ALERT "Unable to copy %lu bytes\n", uncp);
-        return uncp;
+        return -uncp;
     }
 }
 
@@ -212,6 +226,7 @@ static int uart_init(void)
 {
     int ret, Major, Minor, reg;
 
+    // Allocate memory for the structure
     uartdev = kmalloc(sizeof(struct dev), GFP_KERNEL);
     if (!uartdev)
     {
@@ -220,13 +235,18 @@ static int uart_init(void)
     }
     memset(uartdev, 0, sizeof(struct dev));
     uartdev->devname = "serp";
+
+    // Initialize the semaphore
     init_MUTEX(&uartdev->sem);
 
+    // Request the region - Start: 0x3F8 End: 0x3FF
     if (!request_region(BASE, 8, uartdev->devname))
     {
         printk(KERN_ERR "Request_region failed !!\n");
         return -1;
     }
+
+    // Configure serial port with defaul parameters
     configure_uart_device();
 
     //  Allocate Major Numbers
@@ -276,11 +296,13 @@ void configure_uart_device()
 static void uart_exit(void)
 {
     int Major;
+
     Major = MAJOR(uartdev->uartdevice);
     cdev_del(&uartdev->cdev);
     unregister_chrdev_region(uartdev->uartdevice, 1);
     kfree(uartdev);
     release_region(BASE, 8);
+
     printk(KERN_INFO "Major number: %d unloaded\n", Major);
 }
 
