@@ -97,7 +97,7 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
     if (!uartdev->data)
     {
         printk(KERN_ERR "Error allocating memory for the read operation!!\n");
-        return -1;
+        return -ENOMEM;
     }
     memset(uartdev->data, 0, sizeof(char) * (count + 1));
 
@@ -174,7 +174,7 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
     if (!uartdev->data)
     {
         printk(KERN_ERR "Error aloccating memory for write operation!!\n");
-        return -1;
+        return -ENOMEM;
     }
     memset(uartdev->data, 0, sizeof(char) * (count + 1));
 
@@ -232,7 +232,7 @@ static int uart_init(void)
     if (!uartdev)
     {
         printk(KERN_ERR "Failed allocating memory por the device structure\n");
-        return -1;
+        return -ENOMEM;
     }
     memset(uartdev, 0, sizeof(struct dev));
     uartdev->devname = "serp";
