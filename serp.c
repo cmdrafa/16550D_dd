@@ -84,6 +84,7 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
     int data_read = 0;
     struct dev *uartdev = filep->private_data;
 
+    // If semaphore fails
     if (down_interruptible(&uartdev->sem))
     {
         return -ERESTARTSYS;
@@ -143,11 +144,10 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
             return 0;
         }
     }
-    // Check the better error message to send
     else
     {
         up(&uartdev->sem);
-        return -uncp;
+        return -EFAULT;
     }
 }
 
@@ -160,6 +160,7 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
     int i;              // Array index of char data
     struct dev *uartdev = filep->private_data;
 
+    // If semaphore fails
     if (down_interruptible(&uartdev->sem))
     {
         return -ERESTARTSYS;
@@ -205,11 +206,11 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
         printk(KERN_INFO "Bytes written %d\n", count);
         return count;
     }
-    else // Check for better error condition
+    else
     {
         up(&uartdev->sem);
         printk(KERN_ALERT "Unable to copy %lu bytes\n", uncp);
-        return -uncp;
+        return -EFAULT;
     }
 }
 
@@ -270,6 +271,7 @@ static int uart_init(void)
     if (reg < 0)
     {
         printk(KERN_ERR "Error in cdev_add\n");
+        return reg;
     }
 
     setup_timer(&read_timer, timer_callback, 0);
