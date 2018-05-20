@@ -106,6 +106,11 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
     {
         if (!(inb(BASE + UART_LSR) & UART_LSR_DR))
         {
+            if (filep->f_flags & O_NONBLOCK)
+            {
+                up(&uartdev->sem);
+                return -EAGAIN;
+            }
             set_current_state(TASK_INTERRUPTIBLE);
             schedule_timeout(1);
         }
@@ -141,6 +146,7 @@ ssize_t uart_read(struct file *filep, char __user *buff, size_t count, loff_t *o
         }
         else
         {
+            up(&uartdev->sem);
             return 0;
         }
     }
@@ -192,6 +198,11 @@ ssize_t uart_write(struct file *filep, const char __user *buff, size_t count, lo
         }
         else
         {
+            if (filep->f_flags & O_NONBLOCK)
+            {
+                up(&uartdev->sem);
+                return -EAGAIN;
+            }
             set_current_state(TASK_INTERRUPTIBLE);
             schedule_timeout(1);
         }
